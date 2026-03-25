@@ -15,6 +15,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
+    "@serverless-backend-starter/core": "*",
     "pg": "^8.20.0"
   }
 }

@@ -7,6 +7,19 @@
     "packages/*",
     "services/*"
   ],
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "remove": "sst remove",
+    "db:generate": "cd packages/database && bunx prisma generate",
+    "db:migrate": "cd packages/database && bunx prisma migrate dev",
+    "db:migrate:prod": "cd packages/database && bunx prisma migrate deploy",
+    "db:push": "cd packages/database && bunx prisma db push",
+    "db:studio": "cd packages/database && bunx prisma studio",
+    "db:reset": "cd packages/database && bunx prisma migrate reset",
+    "type-check": "bunx tsc --noEmit",
+    "setup": "bun install && bun run db:generate && bun run db:migrate"
+  },
   "devDependencies": {
     "@types/aws-lambda": "8.10.161",
     "@types/bun": "latest"
