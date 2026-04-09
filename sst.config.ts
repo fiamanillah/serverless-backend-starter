@@ -7,6 +7,12 @@ export default $config({
             removal: input?.stage === 'production' ? 'retain' : 'remove',
             protect: ['production'].includes(input?.stage),
             home: 'aws',
+            providers: {
+                aws: {
+                    region: 'us-east-2',
+                    version: '7.20.0',
+                },
+            },
         };
     },
     async run() {
@@ -105,7 +111,7 @@ export default $config({
             STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
             STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
             S3_BUCKET_NAME: siteDocumentsBucket.name,
-            APP_AWS_REGION: process.env.AWS_REGION || 'eu-west-2',
+            APP_AWS_REGION: process.env.AWS_REGION || 'us-east-2',
         };
 
         // ==========================================

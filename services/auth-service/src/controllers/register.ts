@@ -42,10 +42,10 @@ export async function registerHandler(c: Context): Promise<Response> {
             const operatorProfileCreate = {
                 userId: result.userSub,
                 fullName,
+                contactPhone: body.contactPhone || '',
+                flyerId: body.flyerId || '',
                 ...(body.organisation !== undefined ? { organisation: body.organisation } : {}),
-                ...(body.flyerId !== undefined ? { flyerId: body.flyerId } : {}),
                 ...(body.operatorId !== undefined ? { operatorReference: body.operatorId } : {}),
-                ...(body.contactPhone !== undefined ? { contactPhone: body.contactPhone } : {}),
             };
 
             await tx.operatorProfile.upsert({
@@ -57,8 +57,8 @@ export async function registerHandler(c: Context): Promise<Response> {
             const landownerProfileCreate = {
                 userId: result.userSub,
                 fullName,
+                contactPhone: body.contactPhone || '',
                 ...(body.organisation !== undefined ? { organisation: body.organisation } : {}),
-                ...(body.contactPhone !== undefined ? { contactPhone: body.contactPhone } : {}),
             };
 
             await tx.landownerProfile.upsert({
