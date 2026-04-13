@@ -1,0 +1,30 @@
+info:
+    name: List Notifications
+    type: http
+    seq: 2
+
+http:
+    method: GET
+    url: '{{baseUrl}}/notifications/v1'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{idToken}}
+
+settings:
+    encodeUrl: true
+    timeout: 0
+    followRedirects: true
+    maxRedirects: 5
+
+docs: |-
+    ## List Notifications
+    Returns the authenticated user's notifications, ordered from newest to oldest.
+
+    ### Query Parameters
+    | Field | Type | Required | Description |
+    |-------|------|----------|-------------|
+    | userId | string | No | Admin override to view another user's notifications |
+    | unreadOnly | boolean | No | Set to true to return unread notifications only |
+    | limit | number | No | Maximum number of notifications to return |

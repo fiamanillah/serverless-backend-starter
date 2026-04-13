@@ -67,6 +67,17 @@ export async function registerHandler(c: Context): Promise<Response> {
                 update: {},
             });
         }
+
+        await tx.notification.create({
+            data: {
+                userId: result.userSub,
+                type: 'success',
+                title: 'Welcome to VertiAccess',
+                message:
+                    'Your account was created successfully. Complete your profile and verification to unlock all features.',
+                actionUrl: '/dashboard',
+            },
+        });
     });
 
     return sendCreatedResponse(

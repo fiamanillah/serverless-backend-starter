@@ -1,0 +1,23 @@
+info:
+    name: Mark All Notifications Read
+    type: http
+    seq: 6
+
+http:
+    method: PATCH
+    url: '{{baseUrl}}/notifications/v1/read-all'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{idToken}}
+
+settings:
+    encodeUrl: true
+    timeout: 0
+    followRedirects: true
+    maxRedirects: 5
+
+docs: |-
+    ## Mark All Notifications Read
+    Marks all unread notifications as read for the authenticated user.

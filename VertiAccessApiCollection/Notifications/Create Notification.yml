@@ -1,0 +1,34 @@
+info:
+    name: Create Notification
+    type: http
+    seq: 4
+
+http:
+    method: POST
+    url: '{{baseUrl}}/notifications/v1'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{idToken}}
+    body:
+        type: json
+        data: |-
+            {
+              "userId": "USER_ID_HERE",
+              "type": "info",
+              "title": "Site review updated",
+              "message": "Your site is now under review.",
+              "actionUrl": "/dashboard/landowner",
+              "relatedEntityId": "SITE_ID_HERE"
+            }
+
+settings:
+    encodeUrl: true
+    timeout: 0
+    followRedirects: true
+    maxRedirects: 5
+
+docs: |-
+    ## Create Notification
+    Creates a notification for a user. Intended for admin or system testing.

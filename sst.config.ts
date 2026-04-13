@@ -226,6 +226,32 @@ export default $config({
             memory: '128 MB',
         });
 
+        // ==========================================
+        // Notification Service — handles /notifications/v1/*
+        // ==========================================
+        const notificationLambdaConfig = {
+            handler: 'services/notification-service/index.handler',
+            environment: sharedEnv,
+            link: [databaseUrl],
+            timeout: '30 seconds' as const,
+            memory: '256 MB' as const,
+        };
+
+        api.route('GET /notifications/v1', notificationLambdaConfig);
+        api.route('GET /notifications/v1/unread-count', notificationLambdaConfig);
+        api.route('POST /notifications/v1', notificationLambdaConfig);
+        api.route('PATCH /notifications/v1/read-all', notificationLambdaConfig);
+        api.route('PATCH /notifications/v1/{id}/read', notificationLambdaConfig);
+        api.route('DELETE /notifications/v1/{id}', notificationLambdaConfig);
+
+        api.route('GET /notifications/v1/health', {
+            handler: 'services/notification-service/index.handler',
+            environment: sharedEnv,
+            link: [databaseUrl],
+            timeout: '10 seconds',
+            memory: '128 MB',
+        });
+
         // Test endpoint
         api.route('GET /test/v1/ping', {
             handler: 'services/test-service/index.handler',

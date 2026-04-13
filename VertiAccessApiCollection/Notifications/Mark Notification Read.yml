@@ -1,0 +1,23 @@
+info:
+    name: Mark Notification Read
+    type: http
+    seq: 5
+
+http:
+    method: PATCH
+    url: '{{baseUrl}}/notifications/v1/{{notificationId}}/read'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{idToken}}
+
+settings:
+    encodeUrl: true
+    timeout: 0
+    followRedirects: true
+    maxRedirects: 5
+
+docs: |-
+    ## Mark Notification Read
+    Marks a single notification as read for the authenticated user.

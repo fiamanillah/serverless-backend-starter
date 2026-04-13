@@ -1,7 +1,13 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '@serverless-backend-starter/database';
-import { AppError, HTTPStatusCode, sendResponse, sendCreatedResponse, type CognitoUser } from '@serverless-backend-starter/core';
+import {
+    AppError,
+    HTTPStatusCode,
+    sendResponse,
+    sendCreatedResponse,
+    type CognitoUser,
+} from '@serverless-backend-starter/core';
 import { stripe } from '../services/billing.service.ts';
 import { createPlanSchema, updatePlanSchema } from '../schemas/plans.schema.ts';
 
@@ -11,12 +17,12 @@ type PlanFeatureMap = {
     billingType?: BillingType;
     description?: string;
     unitLabel?: string;
+    platformFee?: number;
+    includedBookings?: number;
     stripeMonthlyPriceId?: string;
     stripeAnnualPriceId?: string;
     stripePaygPriceId?: string;
 };
-
-
 
 function parseFeatures(features: unknown): PlanFeatureMap {
     if (!features || typeof features !== 'object' || Array.isArray(features)) {
@@ -32,7 +38,11 @@ function toMinorUnit(amount: number): number {
 function requireAdmin(c: Context) {
     const cognitoUser = c.get('cognitoUser') as CognitoUser;
     if ((cognitoUser?.role || '').toLowerCase() !== 'admin') {
-        throw new AppError({ statusCode: HTTPStatusCode.FORBIDDEN, message: "Admin role required", code: "FORBIDDEN" });
+        throw new AppError({
+            statusCode: HTTPStatusCode.FORBIDDEN,
+            message: 'Admin role required',
+            code: 'FORBIDDEN',
+        });
     }
 }
 
@@ -53,9 +63,15 @@ function serializePlan(plan: {
         billingType: features.billingType || 'subscription',
         monthlyPrice: Number(plan.monthlyPrice?.toString() || 0),
         annualPrice: Number(plan.annualPrice?.toString() || 0),
+        platformFee:
+            typeof features.platformFee === 'number'
+                ? features.platformFee
+                : Number(plan.monthlyPrice?.toString() || 0),
+        includedBookings:
+            typeof features.includedBookings === 'number' ? features.includedBookings : null,
         currency: plan.currency,
         description: features.description || '',
-        unitLabel: features.unitLabel || (features.billingType === 'payg' ? '/request' : '/mo'),
+        unitLabel: features.unitLabel || (features.billingType === 'payg' ? '/booking' : '/mo'),
         stripeProductId: plan.stripeProductId,
         stripeMonthlyPriceId: features.stripeMonthlyPriceId || null,
         stripeAnnualPriceId: features.stripeAnnualPriceId || null,
@@ -83,6 +99,8 @@ export async function createPlanHandler(c: Context): Promise<Response> {
     const body = (c.req as any).valid('json') as z.infer<typeof createPlanSchema>;
     const billingType = body.billingType;
     const currency = body.currency.toLowerCase();
+    const effectiveMonthlyPrice =
+        billingType === 'payg' ? Number(body.platformFee || 0) : Number(body.monthlyPrice || 0);
 
     const stripeProduct = await stripe.products.create({
         name: body.name,
@@ -95,12 +113,15 @@ export async function createPlanHandler(c: Context): Promise<Response> {
         billingType,
         description: body.description,
         unitLabel: body.unitLabel,
+        platformFee: billingType === 'payg' ? Number(body.platformFee || 0) : undefined,
+        includedBookings:
+            billingType === 'subscription' ? Number(body.includedBookings || 0) : undefined,
     };
 
     if (billingType === 'subscription') {
         const monthlyPrice = await stripe.prices.create({
             product: stripeProduct.id,
-            unit_amount: toMinorUnit(body.monthlyPrice),
+            unit_amount: toMinorUnit(effectiveMonthlyPrice),
             currency,
             recurring: { interval: 'month' },
         });
@@ -118,7 +139,7 @@ export async function createPlanHandler(c: Context): Promise<Response> {
     } else {
         const paygPrice = await stripe.prices.create({
             product: stripeProduct.id,
-            unit_amount: toMinorUnit(body.monthlyPrice),
+            unit_amount: toMinorUnit(effectiveMonthlyPrice),
             currency,
         });
         features.stripePaygPriceId = paygPrice.id;
@@ -127,7 +148,7 @@ export async function createPlanHandler(c: Context): Promise<Response> {
     const plan = await db.subscriptionPlan.create({
         data: {
             name: body.name,
-            monthlyPrice: body.monthlyPrice,
+            monthlyPrice: effectiveMonthlyPrice,
             annualPrice: body.annualPrice ?? 0,
             currency: body.currency.toUpperCase(),
             stripeProductId: stripeProduct.id,
@@ -136,11 +157,7 @@ export async function createPlanHandler(c: Context): Promise<Response> {
         },
     });
 
-    return sendCreatedResponse(
-        c,
-        serializePlan(plan),
-        'Plan created'
-    );
+    return sendCreatedResponse(c, serializePlan(plan), 'Plan created');
 }
 
 export async function updatePlanHandler(c: Context): Promise<Response> {
@@ -151,12 +168,22 @@ export async function updatePlanHandler(c: Context): Promise<Response> {
 
     const existing = await db.subscriptionPlan.findUnique({ where: { id: planId } });
     if (!existing) {
-        throw new AppError({ statusCode: HTTPStatusCode.NOT_FOUND, message: "Plan not found", code: "NOT_FOUND" });
+        throw new AppError({
+            statusCode: HTTPStatusCode.NOT_FOUND,
+            message: 'Plan not found',
+            code: 'NOT_FOUND',
+        });
     }
 
     const features = parseFeatures(existing.features);
     const billingType = features.billingType || 'subscription';
     const currency = (body.currency || existing.currency).toLowerCase();
+    const nextMonthlyPrice =
+        billingType === 'payg'
+            ? typeof body.platformFee === 'number'
+                ? body.platformFee
+                : body.monthlyPrice
+            : body.monthlyPrice;
 
     if (existing.stripeProductId) {
         await stripe.products.update(existing.stripeProductId, {
@@ -171,13 +198,25 @@ export async function updatePlanHandler(c: Context): Promise<Response> {
         description: body.description ?? features.description,
         unitLabel: body.unitLabel ?? features.unitLabel,
         billingType,
+        platformFee:
+            billingType === 'payg'
+                ? typeof body.platformFee === 'number'
+                    ? body.platformFee
+                    : features.platformFee
+                : undefined,
+        includedBookings:
+            billingType === 'subscription'
+                ? typeof body.includedBookings === 'number'
+                    ? body.includedBookings
+                    : features.includedBookings
+                : undefined,
     };
 
-    if (existing.stripeProductId && typeof body.monthlyPrice === 'number') {
+    if (existing.stripeProductId && typeof nextMonthlyPrice === 'number') {
         if (billingType === 'subscription') {
             const monthlyPrice = await stripe.prices.create({
                 product: existing.stripeProductId,
-                unit_amount: toMinorUnit(body.monthlyPrice),
+                unit_amount: toMinorUnit(nextMonthlyPrice),
                 currency,
                 recurring: { interval: 'month' },
             });
@@ -185,7 +224,7 @@ export async function updatePlanHandler(c: Context): Promise<Response> {
         } else {
             const paygPrice = await stripe.prices.create({
                 product: existing.stripeProductId,
-                unit_amount: toMinorUnit(body.monthlyPrice),
+                unit_amount: toMinorUnit(nextMonthlyPrice),
                 currency,
             });
             nextFeatures.stripePaygPriceId = paygPrice.id;
@@ -211,7 +250,7 @@ export async function updatePlanHandler(c: Context): Promise<Response> {
         where: { id: planId },
         data: {
             name: body.name,
-            monthlyPrice: body.monthlyPrice,
+            monthlyPrice: nextMonthlyPrice,
             annualPrice: body.annualPrice,
             currency: body.currency?.toUpperCase(),
             isActive: body.isActive,
@@ -228,7 +267,11 @@ export async function deletePlanHandler(c: Context): Promise<Response> {
     const planId = c.req.param('planId');
     const existing = await db.subscriptionPlan.findUnique({ where: { id: planId } });
     if (!existing) {
-        throw new AppError({ statusCode: HTTPStatusCode.NOT_FOUND, message: "Plan not found", code: "NOT_FOUND" });
+        throw new AppError({
+            statusCode: HTTPStatusCode.NOT_FOUND,
+            message: 'Plan not found',
+            code: 'NOT_FOUND',
+        });
     }
 
     if (existing.stripeProductId) {

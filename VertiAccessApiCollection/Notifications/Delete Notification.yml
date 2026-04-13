@@ -1,0 +1,23 @@
+info:
+    name: Delete Notification
+    type: http
+    seq: 7
+
+http:
+    method: DELETE
+    url: '{{baseUrl}}/notifications/v1/{{notificationId}}'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{idToken}}
+
+settings:
+    encodeUrl: true
+    timeout: 0
+    followRedirects: true
+    maxRedirects: 5
+
+docs: |-
+    ## Delete Notification
+    Deletes a notification owned by the authenticated user, or any notification as an admin.

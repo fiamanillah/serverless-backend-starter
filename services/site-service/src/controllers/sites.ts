@@ -83,7 +83,8 @@ async function ensureAuthenticatedUserExists(cognitoUser: CognitoUser): Promise<
             create: {
                 userId: effectiveUserId,
                 fullName: fullName || cognitoUser.email,
-                contactPhone: (cognitoUser as any).phone_number || (cognitoUser as any).phoneNumber || '',
+                contactPhone:
+                    (cognitoUser as any).phone_number || (cognitoUser as any).phoneNumber || '',
             },
             update: {},
         });
@@ -170,6 +171,27 @@ export async function createSiteHandler(c: Context): Promise<Response> {
     // Safety net for legacy users that exist in Cognito but not yet in local DB.
     const effectiveUserId = await ensureAuthenticatedUserExists(cognitoUser);
 
+    const userRecord = await db.user.findUnique({
+        where: { id: effectiveUserId },
+        select: { role: true, status: true },
+    });
+
+    if (!userRecord) {
+        throw new AppError({
+            statusCode: HTTPStatusCode.NOT_FOUND,
+            message: 'User not found',
+            code: 'NOT_FOUND',
+        });
+    }
+
+    if (userRecord.role === 'LANDOWNER' && userRecord.status !== 'VERIFIED') {
+        throw new AppError({
+            statusCode: HTTPStatusCode.FORBIDDEN,
+            message: 'Landowner profile must be verified before creating a site',
+            code: 'FORBIDDEN',
+        });
+    }
+
     // Build geometry metadata JSON (stores circle/polygon data without PostGIS)
     const geometryMetadata: Record<string, unknown> = {
         geometry: body.geometry,
@@ -229,6 +251,17 @@ export async function createSiteHandler(c: Context): Promise<Response> {
             data: { geometryMetadata: geometryMetadata as any },
         });
     }
+
+    await db.notification.create({
+        data: {
+            userId: effectiveUserId,
+            type: 'info',
+            title: 'Site Submitted for Review',
+            message: `Your site "${site.name}" has been submitted and is pending admin review.`,
+            actionUrl: '/dashboard/landowner',
+            relatedEntityId: site.id,
+        },
+    });
 
     return sendCreatedResponse(c, serializeSite(site), 'Site created successfully');
 }
@@ -431,6 +464,56 @@ export async function updateSiteStatusHandler(c: Context): Promise<Response> {
         data: { status: body.status as any },
         include: { documents: true },
     });
+
+    const statusNotificationMap: Record<
+        string,
+        { type: 'success' | 'warning' | 'info' | 'error'; title: string; message: string }
+    > = {
+        ACTIVE: {
+            type: 'success',
+            title: 'Site Activated',
+            message: `Your site "${site.name}" is now active and visible to operators.`,
+        },
+        REJECTED: {
+            type: 'error',
+            title: 'Site Rejected',
+            message: `Your site "${site.name}" was rejected. Please review and update your submission.`,
+        },
+        DISABLE: {
+            type: 'warning',
+            title: 'Site Disabled',
+            message: `Your site "${site.name}" has been disabled and is no longer bookable.`,
+        },
+        TEMPORARY_RESTRICTED: {
+            type: 'warning',
+            title: 'Site Temporarily Restricted',
+            message: `Your site "${site.name}" is temporarily restricted.`,
+        },
+        WITHDRAWN: {
+            type: 'info',
+            title: 'Site Withdrawn',
+            message: `Your site "${site.name}" has been withdrawn.`,
+        },
+        UNDER_REVIEW: {
+            type: 'info',
+            title: 'Site Under Review',
+            message: `Your site "${site.name}" is currently under review.`,
+        },
+    };
+
+    const notificationMeta = statusNotificationMap[body.status];
+    if (notificationMeta) {
+        await db.notification.create({
+            data: {
+                userId: site.landownerId,
+                type: notificationMeta.type,
+                title: notificationMeta.title,
+                message: notificationMeta.message,
+                actionUrl: `/dashboard/landowner`,
+                relatedEntityId: site.id,
+            },
+        });
+    }
 
     return sendResponse(c, {
         message: `Site status updated to ${body.status}`,

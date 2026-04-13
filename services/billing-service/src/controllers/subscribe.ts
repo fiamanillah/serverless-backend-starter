@@ -1,7 +1,12 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '@serverless-backend-starter/database';
-import { AppError, HTTPStatusCode, sendResponse, type CognitoUser } from '@serverless-backend-starter/core';
+import {
+    AppError,
+    HTTPStatusCode,
+    sendResponse,
+    type CognitoUser,
+} from '@serverless-backend-starter/core';
 import { stripe } from '../services/billing.service.ts';
 import type { activatePlanSchema } from '../schemas/subscribe.schema.ts';
 
@@ -33,12 +38,20 @@ export async function activatePlanHandler(c: Context): Promise<Response> {
     });
 
     if (!user) {
-        throw new AppError({ statusCode: HTTPStatusCode.NOT_FOUND, message: 'User not found', code: 'NOT_FOUND' });
+        throw new AppError({
+            statusCode: HTTPStatusCode.NOT_FOUND,
+            message: 'User not found',
+            code: 'NOT_FOUND',
+        });
     }
 
     const plan = await db.subscriptionPlan.findUnique({ where: { id: body.planId } });
     if (!plan || !plan.isActive) {
-        throw new AppError({ statusCode: HTTPStatusCode.NOT_FOUND, message: 'Plan not found or inactive', code: 'NOT_FOUND' });
+        throw new AppError({
+            statusCode: HTTPStatusCode.NOT_FOUND,
+            message: 'Plan not found or inactive',
+            code: 'NOT_FOUND',
+        });
     }
 
     const features = parseFeatures(plan.features);
@@ -143,6 +156,17 @@ export async function activatePlanHandler(c: Context): Promise<Response> {
                     },
                 },
             });
+
+            await tx.notification.create({
+                data: {
+                    userId: user.id,
+                    type: 'success',
+                    title: 'PAYG Plan Activated',
+                    message: `Your PAYG plan "${plan.name}" is now active.`,
+                    actionUrl: '/dashboard/operator',
+                    relatedEntityId: plan.id,
+                },
+            });
         });
 
         return sendResponse(c, {
@@ -161,7 +185,11 @@ export async function activatePlanHandler(c: Context): Promise<Response> {
             : features.stripeMonthlyPriceId || features.stripeAnnualPriceId;
 
     if (!priceId) {
-        throw new AppError({ statusCode: HTTPStatusCode.BAD_REQUEST, message: 'Plan is missing Stripe price configuration', code: 'BAD_REQUEST' });
+        throw new AppError({
+            statusCode: HTTPStatusCode.BAD_REQUEST,
+            message: 'Plan is missing Stripe price configuration',
+            code: 'BAD_REQUEST',
+        });
     }
 
     const subscription = await stripe.subscriptions.create({
@@ -202,6 +230,17 @@ export async function activatePlanHandler(c: Context): Promise<Response> {
                 ? new Date((subscription as any).current_period_end * 1000)
                 : null,
             cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+        },
+    });
+
+    await db.notification.create({
+        data: {
+            userId: user.id,
+            type: 'success',
+            title: 'Subscription Activated',
+            message: `Your subscription to "${plan.name}" is now ${String(subscription.status).toLowerCase()}.`,
+            actionUrl: '/dashboard/operator',
+            relatedEntityId: plan.id,
         },
     });
 

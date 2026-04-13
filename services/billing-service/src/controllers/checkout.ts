@@ -1,9 +1,10 @@
 // services/billing-service/src/checkout.ts
-import type { Context } from "hono";
-import { sendResponse, type CognitoUser } from "@serverless-backend-starter/core";
-import { createCheckoutSession } from "../services/billing.service.ts";
-import type { checkoutSchema } from "../schemas/checkout.schema.ts";
-import { z } from "zod";
+import type { Context } from 'hono';
+import { sendResponse, type CognitoUser } from '@serverless-backend-starter/core';
+import { createCheckoutSession } from '../services/billing.service.ts';
+import type { checkoutSchema } from '../schemas/checkout.schema.ts';
+import { z } from 'zod';
+import { db } from '@serverless-backend-starter/database';
 
 type CheckoutDTO = z.infer<typeof checkoutSchema.body>;
 
@@ -12,19 +13,29 @@ type CheckoutDTO = z.infer<typeof checkoutSchema.body>;
  * Creates a Stripe checkout session for the authenticated user
  */
 export async function checkoutHandler(c: Context): Promise<Response> {
-  const cognitoUser = c.get("cognitoUser") as CognitoUser;
-  const body = c.get("validatedBody") as CheckoutDTO;
+    const cognitoUser = c.get('cognitoUser') as CognitoUser;
+    const body = c.get('validatedBody') as CheckoutDTO;
 
-  const url = await createCheckoutSession({
-    userId: cognitoUser.sub,
-    email: cognitoUser.email,
-    planTier: body.planTier,
-    successUrl: body.successUrl,
-    cancelUrl: body.cancelUrl,
-  });
+    const url = await createCheckoutSession({
+        userId: cognitoUser.sub,
+        email: cognitoUser.email,
+        planTier: body.planTier,
+        successUrl: body.successUrl,
+        cancelUrl: body.cancelUrl,
+    });
 
-  return sendResponse(c, {
-    data: { url },
-    message: "Checkout session created",
-  });
+    await db.notification.create({
+        data: {
+            userId: cognitoUser.sub,
+            type: 'info',
+            title: 'Checkout Session Created',
+            message: `Your checkout session for the ${body.planTier} plan is ready. Complete payment to activate your subscription.`,
+            actionUrl: '/dashboard/operator',
+        },
+    });
+
+    return sendResponse(c, {
+        data: { url },
+        message: 'Checkout session created',
+    });
 }
