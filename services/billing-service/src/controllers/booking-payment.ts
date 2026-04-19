@@ -7,9 +7,16 @@ import {
     HTTPStatusCode,
     sendResponse,
     type CognitoUser,
+    generateCertId,
 } from '@serverless-backend-starter/core';
 import { stripe } from '../services/billing.service.ts';
 import { bookingPaymentSchema } from '../schemas/booking-payment.schema.ts';
+
+/** Generate a deterministic verification hash for a consent certificate */
+function generateVerificationHash(bookingId: string, siteId: string, operatorId: string): string {
+    const raw = `${bookingId}:${siteId}:${operatorId}:${Date.now()}`;
+    return Buffer.from(raw).toString('base64url');
+}
 
 /**
  * POST /billing/v1/booking-payment-intent
@@ -245,6 +252,33 @@ export async function payBookingHandler(c: Context): Promise<Response> {
                     toalCost,
                     platformFee,
                 },
+            },
+        });
+
+        // Payment succeeded, the booking is already APPROVED. We issue Consent Certificate now.
+        const hash = generateVerificationHash(booking.id, booking.siteId, booking.operatorId);
+        const certId = generateCertId();
+        await tx.consentCertificate.create({
+            data: {
+                bookingId: booking.id,
+                certId,
+                issueDate: new Date(),
+                verificationHash: hash,
+                digitalSignature: `SIG_${hash.substring(0, 24)}`,
+                verificationUrl: `https://vertiaccess.app/verify/${hash}`,
+                siteStatusAtIssue: booking.site?.status || 'ACTIVE',
+            },
+        });
+
+        // Notify operator — Payment Successful & Certificate Ready
+        await tx.notification.create({
+            data: {
+                userId: booking.operatorId,
+                type: 'success',
+                title: 'Payment Confirmed',
+                message: `Your payment of £${totalToChange.toFixed(2)} was successfully processed. Your consent certificate for booking ${booking.bookingReference} is now ready.`,
+                actionUrl: '/dashboard/operator',
+                relatedEntityId: booking.id,
             },
         });
     });

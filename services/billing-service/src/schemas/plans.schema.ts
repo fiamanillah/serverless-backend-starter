@@ -12,6 +12,17 @@ export const createPlanSchema = z
         description: z.string().optional(),
         unitLabel: z.string().optional(),
         isActive: z.boolean().optional(),
+        customFeatures: z.array(
+            z.object({
+                id: z.string().optional(),
+                name: z.string().min(1),
+                included: z.boolean()
+            })
+        ).optional(),
+        limits: z.object({
+            maxSites: z.number().int().optional(),
+            monthlyBookings: z.number().int().optional(),
+        }).optional(),
     })
     .superRefine((data, ctx) => {
         if (data.billingType === 'payg' && typeof data.platformFee !== 'number') {
@@ -41,4 +52,15 @@ export const updatePlanSchema = z.object({
     description: z.string().optional(),
     unitLabel: z.string().optional(),
     isActive: z.boolean().optional(),
+    customFeatures: z.array(
+        z.object({
+            id: z.string().optional(),
+            name: z.string().min(1),
+            included: z.boolean()
+        })
+    ).optional(),
+    limits: z.object({
+        maxSites: z.number().int().optional(),
+        monthlyBookings: z.number().int().optional(),
+    }).optional(),
 });

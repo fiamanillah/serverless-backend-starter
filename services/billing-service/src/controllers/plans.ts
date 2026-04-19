@@ -22,6 +22,8 @@ type PlanFeatureMap = {
     stripeMonthlyPriceId?: string;
     stripeAnnualPriceId?: string;
     stripePaygPriceId?: string;
+    customFeatures?: Array<{ id?: string; name: string; included: boolean }>;
+    limits?: { maxSites?: number; monthlyBookings?: number };
 };
 
 function parseFeatures(features: unknown): PlanFeatureMap {
@@ -77,6 +79,8 @@ function serializePlan(plan: {
         stripeAnnualPriceId: features.stripeAnnualPriceId || null,
         stripePaygPriceId: features.stripePaygPriceId || null,
         isActive: plan.isActive,
+        customFeatures: features.customFeatures || [],
+        limits: features.limits || { maxSites: undefined, monthlyBookings: undefined },
     };
 }
 
@@ -102,6 +106,18 @@ export async function createPlanHandler(c: Context): Promise<Response> {
     const effectiveMonthlyPrice =
         billingType === 'payg' ? Number(body.platformFee || 0) : Number(body.monthlyPrice || 0);
 
+    if (billingType === 'payg') {
+        const activePlans = await db.subscriptionPlan.findMany({ where: { isActive: true } });
+        const hasPayg = activePlans.some(p => (p.features as any)?.billingType === 'payg');
+        if (hasPayg) {
+            throw new AppError({
+                statusCode: HTTPStatusCode.BAD_REQUEST,
+                message: 'Only one active Pay-As-You-Go (PAYG) plan is allowed in the system.',
+                code: 'BAD_REQUEST',
+            });
+        }
+    }
+
     const stripeProduct = await stripe.products.create({
         name: body.name,
         active: body.isActive ?? true,
@@ -116,6 +132,8 @@ export async function createPlanHandler(c: Context): Promise<Response> {
         platformFee: billingType === 'payg' ? Number(body.platformFee || 0) : undefined,
         includedBookings:
             billingType === 'subscription' ? Number(body.includedBookings || 0) : undefined,
+        customFeatures: body.customFeatures,
+        limits: body.limits,
     };
 
     if (billingType === 'subscription') {
@@ -210,7 +228,23 @@ export async function updatePlanHandler(c: Context): Promise<Response> {
                     ? body.includedBookings
                     : features.includedBookings
                 : undefined,
+        customFeatures: body.customFeatures !== undefined ? body.customFeatures : features.customFeatures,
+        limits: body.limits !== undefined ? body.limits : features.limits,
     };
+
+    if (billingType === 'payg' && body.isActive !== false) {
+        const activePlans = await db.subscriptionPlan.findMany({ where: { isActive: true } });
+        const otherPayg = activePlans.find(
+            p => p.id !== planId && (p.features as any)?.billingType === 'payg'
+        );
+        if (otherPayg) {
+            throw new AppError({
+                statusCode: HTTPStatusCode.BAD_REQUEST,
+                message: 'Cannot activate this plan. Another Pay-As-You-Go plan is already active.',
+                code: 'BAD_REQUEST',
+            });
+        }
+    }
 
     if (existing.stripeProductId && typeof nextMonthlyPrice === 'number') {
         if (billingType === 'subscription') {

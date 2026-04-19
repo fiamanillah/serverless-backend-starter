@@ -22,3 +22,4 @@ export const db = new PrismaClient({ adapter });
 
 // Re-export Prisma types for convenience
 export { PrismaClient } from "./generated/prisma/client.js";
+export * from "./src/subscription-guard.ts";
