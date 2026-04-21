@@ -19,3 +19,7 @@ export const updateBookingStatusSchema = z.object({
     status: z.enum(['APPROVED', 'REJECTED', 'CANCELLED']),
     adminNote: z.string().optional(),
 });
+
+export const confirmEmergencyUsageSchema = z.object({
+    used: z.boolean(),
+});

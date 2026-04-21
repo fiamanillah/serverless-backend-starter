@@ -25,6 +25,7 @@ import { getSubscriptionStatusHandler } from './controllers/subscription-status.
 import {
     createBookingPaymentIntentHandler,
     payBookingHandler,
+    processDueBookingPaymentsHandler,
 } from './controllers/booking-payment.ts';
 import { bookingPaymentSchema } from './schemas/booking-payment.schema.ts';
 
@@ -104,3 +105,6 @@ billingRoutes.post(
 
 // Pay landowner for an approved booking using default card
 billingRoutes.post('/bookings/:bookingId/pay', cognitoAuth(), payBookingHandler);
+
+// Internal scheduler endpoint for charging approved PAYG bookings on booking date
+billingRoutes.post('/bookings/process-due-payments', processDueBookingPaymentsHandler);

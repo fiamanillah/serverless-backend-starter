@@ -110,6 +110,7 @@ export default $config({
             COGNITO_CLIENT_ID: userPoolClient.id,
             STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
             STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+            BOOKING_CHARGE_KEY: process.env.BOOKING_CHARGE_KEY || '',
             S3_BUCKET_NAME: siteDocumentsBucket.name,
             APP_AWS_REGION: process.env.AWS_REGION || 'us-east-2',
         };
@@ -173,6 +174,31 @@ export default $config({
             [siteDocumentsBucket, databaseUrl]
         );
         routeService('/sites/v1', siteServiceFunction.arn);
+
+        // ==========================================
+        // Booking Service
+        // ==========================================
+        const bookingServiceFunction = createServiceFunction(
+            'BookingService',
+            'services/booking-service/index.handler',
+            [databaseUrl]
+        );
+        routeService('/bookings/v1', bookingServiceFunction.arn);
+
+        // ==========================================
+        // Booking payment cron (charge approved PAYG bookings on start date)
+        // ==========================================
+        new sst.aws.Cron('BookingDuePaymentsCron', {
+            schedule: 'rate(5 minutes)',
+            job: {
+                handler: 'scripts/process-due-booking-payments.handler',
+                timeout: '30 seconds',
+                environment: {
+                    API_BASE_URL: api.url,
+                    BOOKING_CHARGE_KEY: process.env.BOOKING_CHARGE_KEY || '',
+                },
+            },
+        });
 
         // ==========================================
         // Notification Service

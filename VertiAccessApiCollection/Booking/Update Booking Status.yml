@@ -1,0 +1,33 @@
+info:
+  name: Update Booking Status
+  type: http
+  seq: 20
+
+http:
+  method: PATCH
+  url: "{{baseUrl}}/bookings/v1/:bookingId/status"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: "Bearer {{auth_token}}"
+  body:
+    type: json
+    data: |-
+      {
+        "status": "APPROVED",
+        "adminNote": "Site is available for the requested time Slot."
+      }
+
+vars:
+  bookingId: 
+
+docs: |-
+  ## Update Booking Status
+  Allows landowners to approve or reject a booking, or operators to cancel it.
+
+  ### Request Body
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | status | string | Yes | `"APPROVED"`, `"REJECTED"`, or `"CANCELLED"` |
+  | adminNote | string | No | Optional note explaining the decision |

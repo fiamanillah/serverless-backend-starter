@@ -1,0 +1,33 @@
+info:
+    name: Confirm Emergency Usage
+    type: http
+    seq: 21
+
+http:
+    method: PATCH
+    url: '{{baseUrl}}/bookings/v1/:bookingId/emergency-usage'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: 'Bearer {{auth_token}}'
+    body:
+        type: json
+        data: |-
+            {
+              "used": true
+            }
+
+vars:
+    bookingId:
+
+docs: |-
+    ## Confirm Emergency Usage
+    Marks whether an approved Emergency & Recovery booking was actually used.
+    If `used` is `true`, the backend can process the PAYG charge.
+    If `used` is `false`, no charge should be applied.
+
+    ### Request Body
+    | Field | Type | Required | Description |
+    |-------|------|----------|-------------|
+    | used | boolean | Yes | `true` if the site was used, otherwise `false` |

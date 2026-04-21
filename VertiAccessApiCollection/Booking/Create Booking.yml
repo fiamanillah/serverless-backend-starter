@@ -1,0 +1,44 @@
+info:
+    name: Create Booking
+    type: http
+    seq: 14
+
+http:
+    method: POST
+    url: '{{baseUrl}}/bookings/v1'
+    headers:
+        - name: Content-Type
+          value: application/json
+        - name: Authorization
+          value: 'Bearer {{auth_token}}'
+    body:
+        type: json
+        data: |-
+            {
+              "siteId": "site_123",
+              "startTime": "2026-05-01T10:00:00.000Z",
+              "endTime": "2026-05-01T12:00:00.000Z",
+              "droneModel": "DJI Mavic 3",
+              "missionIntent": "Roof inspection",
+              "useCategory": "planned_toal"
+            }
+
+docs: |-
+    ## Create Booking
+    Operator creates a new booking request for a site.
+    Use `planned_toal` for standard bookings and `emergency_recovery` for Emergency & Recovery bookings.
+    For PAYG users, the booking is created first and payment is handled later by the backend flow.
+
+    ### Request Body
+    | Field | Type | Required | Description |
+    |-------|------|----------|-------------|
+    | siteId | string | Yes | ID of the site to book |
+    | startTime | ISO8601 | Yes | Start of operation |
+    | endTime | ISO8601 | Yes | End of operation |
+    | droneModel | string | Yes | Model of the drone being used |
+    | missionIntent | string | Yes | Purpose of the flight |
+    | useCategory | string | Yes | `"planned_toal"` or `"emergency_recovery"` |
+    | operationReference | string | No | Flyer/Operator reference |
+    | flyerId | string | No | Flyer ID |
+    | paymentIntentId | string | No | Legacy PAYG field; usually not required in the current flow |
+    | billingMode | string | No | `"payg"` or `"subscription"` |

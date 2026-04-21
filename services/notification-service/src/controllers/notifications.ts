@@ -81,20 +81,40 @@ export async function listNotificationsHandler(c: Context): Promise<Response> {
     const cognitoUser = getCognitoUser(c);
     const userId = await getTargetUserId(c, cognitoUser);
     const unreadOnly = c.req.query('unreadOnly') === 'true';
-    const limit = Math.min(Number(c.req.query('limit') || 50), 100);
+    const limit = Math.min(Math.max(Number(c.req.query('limit') || 20), 1), 100);
+    const page = Math.max(Number(c.req.query('page') || 1), 1);
+    const skip = (page - 1) * limit;
 
-    const notifications = await db.notification.findMany({
-        where: {
-            userId,
-            ...(unreadOnly ? { isRead: false } : {}),
-        },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-    });
+    const where = {
+        userId,
+        ...(unreadOnly ? { isRead: false } : {}),
+    };
+
+    const [total, notifications] = await Promise.all([
+        db.notification.count({ where }),
+        db.notification.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limit,
+        }),
+    ]);
+
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
 
     return sendResponse(c, {
         message: 'Notifications retrieved successfully',
-        data: notifications.map(serializeNotification),
+        data: {
+            items: notifications.map(serializeNotification),
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1,
+            },
+        },
     });
 }
 

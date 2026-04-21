@@ -25,16 +25,7 @@ import {
     listDocumentsHandler,
     deleteDocumentHandler,
 } from './controllers/documents.ts';
-import {
-    createBookingHandler,
-    listMyBookingsHandler,
-    listSiteBookingsHandler,
-    listLandownerBookingsHandler,
-    getBookingHandler,
-    getBookingCertificateHandler,
-    updateBookingStatusHandler,
-} from './controllers/bookings.ts';
-import { createBookingSchema, updateBookingStatusSchema } from './schemas/booking.schema.ts';
+// removed booking imports
 
 export const siteRoutes = new Hono();
 
@@ -84,40 +75,4 @@ siteRoutes.post(
 siteRoutes.get('/:siteId/documents', cognitoAuth(), listDocumentsHandler);
 siteRoutes.delete('/:siteId/documents/:docId', cognitoAuth(), deleteDocumentHandler);
 
-// ==========================================
-// Booking endpoints (require auth)
-// ==========================================
-
-// NOTE: Static sub-paths (/bookings/mine, /bookings/landowner) must come
-// before wildcard path (/bookings/:bookingId) to avoid Hono conflict.
-
-// Operator: create a new booking
-siteRoutes.post(
-    '/bookings',
-    cognitoAuth(),
-    zValidator('json', createBookingSchema),
-    createBookingHandler
-);
-
-// Operator: list own bookings
-siteRoutes.get('/bookings/mine', cognitoAuth(), listMyBookingsHandler);
-
-// Landowner: list all bookings across their sites
-siteRoutes.get('/bookings/landowner', cognitoAuth(), listLandownerBookingsHandler);
-
-// Landowner/Admin: list bookings for a specific site
-siteRoutes.get('/bookings/site/:siteId', cognitoAuth(), listSiteBookingsHandler);
-
-// Operator/Landowner/Admin: get a single booking's consent certificate
-siteRoutes.get('/bookings/:bookingId/certificate', cognitoAuth(), getBookingCertificateHandler);
-
-// Operator/Landowner/Admin: get a single booking by ID
-siteRoutes.get('/bookings/:bookingId', cognitoAuth(), getBookingHandler);
-
-// Landowner: approve/reject | Operator: cancel
-siteRoutes.patch(
-    '/bookings/:bookingId/status',
-    cognitoAuth(),
-    zValidator('json', updateBookingStatusSchema),
-    updateBookingStatusHandler
-);
+// (Booking endpoints have been moved to booking-service)

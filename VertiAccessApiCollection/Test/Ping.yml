@@ -6,10 +6,16 @@ info:
 http:
   method: GET
   url: "{{baseUrl}}/test/v1/ping"
-  auth: none
   headers:
     - name: Content-Type
       value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
 docs: |-
   ## Test Ping
   Simple ping endpoint to verify the test service is deployed and responding.

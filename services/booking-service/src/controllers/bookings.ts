@@ -11,8 +11,11 @@ import {
     generateCertId,
     generateHumanId,
 } from '@serverless-backend-starter/core';
-import { createBookingSchema, updateBookingStatusSchema } from '../schemas/booking.schema.ts';
-import { stripe } from '../services/stripe.service.ts';
+import {
+    createBookingSchema,
+    updateBookingStatusSchema,
+    confirmEmergencyUsageSchema,
+} from '../schemas/booking.schema.ts';
 
 // ==========================================
 // Helpers
@@ -51,6 +54,8 @@ function serializeBooking(booking: any) {
         droneModel: booking.droneModel || null,
         missionIntent: booking.missionIntent || null,
         useCategory: booking.useCategory,
+        clzUsed: booking.clzUsed ?? null,
+        clzConfirmedAt: booking.clzConfirmedAt?.toISOString?.() || booking.clzConfirmedAt || null,
         flyerId: booking.flyerId || null,
         isPayg: booking.isPayg,
         platformFee: booking.platformFee ? Number(booking.platformFee.toString()) : null,
@@ -102,7 +107,7 @@ const bookingInclude = {
  * POST /sites/v1/bookings
  * Operator creates a new booking request.
  * - Checks operator is VERIFIED
- * - Checks active subscription (skips payment) OR validates paymentIntentId
+ * - Checks active subscription (skips PAYG) OR schedules PAYG charging for booking date
  * - Auto-approves if site.autoApprove = true
  */
 export async function createBookingHandler(c: Context): Promise<Response> {
@@ -159,24 +164,23 @@ export async function createBookingHandler(c: Context): Promise<Response> {
 
     const bookingStart = new Date(body.startTime);
     const bookingEnd = new Date(body.endTime);
+    const bookingStartDate = body.startTime.slice(0, 10);
+    const bookingEndDate = body.endTime.slice(0, 10);
     if (
         Number.isNaN(bookingStart.getTime()) ||
         Number.isNaN(bookingEnd.getTime()) ||
-        bookingEnd <= bookingStart
+        bookingEnd <= bookingStart ||
+        bookingStartDate !== bookingEndDate
     ) {
         throw new AppError({
             statusCode: HTTPStatusCode.BAD_REQUEST,
-            message: 'Invalid booking time range',
+            message: 'Invalid booking time range. Bookings must stay within a single date.',
             code: 'BAD_REQUEST',
         });
     }
 
-    const bookingSlotCount = Math.max(
-        1,
-        Math.ceil((bookingEnd.getTime() - bookingStart.getTime()) / (1000 * 60 * 60))
-    );
     const accessFeePerSlot = site.toalAccessFee ? Number(site.toalAccessFee.toString()) : 0;
-    const accessFeeTotal = accessFeePerSlot * bookingSlotCount;
+    const accessFeeTotal = accessFeePerSlot;
 
     let isPayg = false;
     let platformFee = 0;
@@ -188,78 +192,22 @@ export async function createBookingHandler(c: Context): Promise<Response> {
         isPayg = false;
         platformFee = 0;
     } else {
-        // Condition B: no subscription — require a successful Stripe PaymentIntent OR it's a delayed payment manual site
+        // Condition B: no subscription — mark as PAYG and charge on booking date.
         isPayg = true;
-        
-        if (site.autoApprove) {
-            if (!body.paymentIntentId) {
-                throw new AppError({
-                    statusCode: 402 as any,
-                    message:
-                        'Payment required: you have no active subscription. Provide a confirmed paymentIntentId.',
-                    code: 'PAYMENT_REQUIRED',
-                });
-            }
 
-            // Verify the PaymentIntent succeeded or attempt off-session confirmation
-            let intent = await stripe.paymentIntents.retrieve(body.paymentIntentId);
-
-            if (
-                intent.status === 'requires_payment_method' ||
-                intent.status === 'requires_confirmation'
-            ) {
-                const defaultCard = operator.paymentMethods[0] ?? null;
-                if (!defaultCard) {
-                    throw new AppError({
-                        statusCode: 402 as any,
-                        message:
-                            'Payment required: No default payment method found to confirm the payment.',
-                        code: 'PAYMENT_REQUIRED',
-                    });
-                }
-                try {
-                    intent = await stripe.paymentIntents.confirm(body.paymentIntentId, {
-                        payment_method: defaultCard.stripePaymentMethodId,
-                        off_session: true,
-                    });
-                } catch (err: any) {
-                    throw new AppError({
-                        statusCode: 402 as any,
-                        message: `Payment confirmation failed: ${err.message}`,
-                        code: 'PAYMENT_FAILED',
-                    });
-                }
-            }
-
-            if (intent.status !== 'succeeded') {
-                throw new AppError({
-                    statusCode: 402 as any,
-                    message: `Payment not confirmed. Stripe status: ${intent.status}`,
-                    code: 'PAYMENT_NOT_CONFIRMED',
-                });
-            }
-
-            const paygCharge = intent.amount
-                ? Number((intent.amount / 100).toFixed(2))
-                : accessFeeTotal;
-            platformFee = Math.max(0, Number((paygCharge - accessFeeTotal).toFixed(2)));
-
-            // Capture default payment card for masked display in UI
-            const defaultCard = operator.paymentMethods[0] ?? null;
-            if (defaultCard) {
-                paymentMethodLast4 = defaultCard.last4;
-                paymentMethodBrand = defaultCard.brand;
-            }
-        } else {
-            // Manual approval site — payment is collected after landowner approval
-            platformFee = 0; // Or whatever calculation makes sense, but total is calculated per booking based on TOAL costs. Wait, the frontend sends total cost. But actually, `platformFee` should probably still be set or we just let `billing-service` charge it. Let's set a standard platform fee if any, or 0.
-            // Actually, in payload, frontend isn't sending platformFee.
-            // In the original code, `paygCharge - accessFeeTotal` is the platform fee.
-            // If the frontend calculated a platform fee, we assume the same. For now, we will leave platformFee as 0 for initial pending state or re-calculate it as `(accessFeeTotal * ...)` but this codebase doesn't have a configured platform fee except by examining intent amount.
-            // Wait, looking at `billing-service`, it charges `toalCost + platformFee`. So we MUST set platformFee here. We can just set it to the standard (e.g. 5.00) or whatever it was if we could get it. Looking closely, the stripe amount in the frontend `Step3` had platformFee = slotFee > 0 ? 0 : 0. Let's just set it to a dummy or fixed amount. Wait, if it's stored, let's keep it null for now, or match the intent. Actually, if frontend shows £5 platform fee, we should probably record it. Wait, `hasActiveSubscription` waives it.
-            // For now, let's just use `0` since there is no standard platform fee available out of thin air, OR we assume a default. Wait, `accessFeeTotal` might have been charged + some fee.
-            platformFee = 5.00; // Hardcoded default based on existing mock flow
+        const defaultCard = operator.paymentMethods[0] ?? null;
+        if (!defaultCard) {
+            throw new AppError({
+                statusCode: 402 as any,
+                message:
+                    'Payment method required: add a default card. PAYG bookings are charged on the booked date.',
+                code: 'PAYMENT_REQUIRED',
+            });
         }
+
+        paymentMethodLast4 = defaultCard.last4;
+        paymentMethodBrand = defaultCard.brand;
+        platformFee = 5.0;
     }
 
     // 4. Determine initial booking status
@@ -287,7 +235,7 @@ export async function createBookingHandler(c: Context): Promise<Response> {
                 paymentMethodLast4,
                 paymentMethodBrand,
                 status: bookingStatus as any,
-                paymentStatus: isPayg ? (site.autoApprove ? 'charged' : 'pending') : null,
+                paymentStatus: isPayg ? 'pending' : null,
                 respondedAt: bookingStatus === 'APPROVED' ? new Date() : null,
             },
             include: {
@@ -303,9 +251,13 @@ export async function createBookingHandler(c: Context): Promise<Response> {
                 type: 'info',
                 title: bookingStatus === 'APPROVED' ? 'Booking Approved' : 'Booking Submitted',
                 message:
-                    bookingStatus === 'APPROVED'
-                        ? `Your booking for "${site.name}" (${bookingReference}) has been automatically approved.`
-                        : `Your booking request for "${site.name}" (${bookingReference}) has been submitted and is pending landowner approval.`,
+                    bookingStatus === 'APPROVED' && isPayg
+                        ? body.useCategory === 'emergency_recovery'
+                            ? `Your Emergency & Recovery booking for "${site.name}" (${bookingReference}) is approved. You will only be charged if you confirm the site was used.`
+                            : `Your booking for "${site.name}" (${bookingReference}) has been automatically approved. Your card will be charged on the booking start date.`
+                        : bookingStatus === 'APPROVED'
+                          ? `Your booking for "${site.name}" (${bookingReference}) has been automatically approved.`
+                          : `Your booking request for "${site.name}" (${bookingReference}) has been submitted and is pending landowner approval.`,
                 actionUrl: '/dashboard/operator',
                 relatedEntityId: newBooking.id,
             },
@@ -325,8 +277,8 @@ export async function createBookingHandler(c: Context): Promise<Response> {
             });
         }
 
-        // Auto-approve: create consent certificate immediately
-        if (bookingStatus === 'APPROVED') {
+        // Auto-approve: create certificate immediately only for non-PAYG bookings.
+        if (bookingStatus === 'APPROVED' && !isPayg) {
             const hash = generateVerificationHash(newBooking.id, site.id, cognitoUser.sub);
             const certId = generateCertId();
             await tx.consentCertificate.create({
@@ -749,7 +701,10 @@ export async function updateBookingStatusHandler(c: Context): Promise<Response> 
         });
 
         // Create consent certificate on APPROVED, but only if they don't need to pay OR they already paid
-        if (body.status === 'APPROVED' && (!booking.isPayg || updated.paymentStatus === 'charged')) {
+        if (
+            body.status === 'APPROVED' &&
+            (!booking.isPayg || updated.paymentStatus === 'charged')
+        ) {
             const hash = generateVerificationHash(bookingId, booking.siteId, booking.operatorId);
             const certId = generateCertId();
             await tx.consentCertificate.create({
@@ -776,13 +731,16 @@ export async function updateBookingStatusHandler(c: Context): Promise<Response> 
                 },
             });
         } else if (body.status === 'APPROVED') {
-            // Notify operator — approved, pending payment
+            // Notify operator — approved, charge will happen on booking date
             await tx.notification.create({
                 data: {
                     userId: booking.operatorId,
                     type: 'info',
-                    title: 'Booking Approved - Payment Required',
-                    message: `Your booking (${booking.bookingReference}) for "${booking.site?.name}" has been approved. Please complete the payment to receive your consent certificate.`,
+                    title: 'Booking Approved - Payment Scheduled',
+                    message:
+                        booking.useCategory === 'emergency_recovery'
+                            ? `Your Emergency & Recovery booking (${booking.bookingReference}) for "${booking.site?.name}" has been approved. Confirm site usage after the window closes to trigger payment.`
+                            : `Your booking (${booking.bookingReference}) for "${booking.site?.name}" has been approved. Your payment will be charged automatically on the booking start date.`,
                     actionUrl: '/dashboard/operator',
                     relatedEntityId: bookingId,
                 },
@@ -828,5 +786,93 @@ export async function updateBookingStatusHandler(c: Context): Promise<Response> 
     return sendResponse(c, {
         message: `Booking ${body.status.toLowerCase()} successfully`,
         data: serializeBooking(finalBooking),
+    });
+}
+
+/**
+ * PATCH /bookings/v1/:bookingId/emergency-usage
+ * Operator confirms whether an approved Emergency & Recovery booking was actually used.
+ */
+export async function confirmEmergencyUsageHandler(c: Context): Promise<Response> {
+    const cognitoUser = getCognitoUser(c);
+    const bookingId = c.req.param('bookingId');
+    const body = (c.req as any).valid('json') as z.infer<typeof confirmEmergencyUsageSchema>;
+
+    const booking = await db.booking.findUnique({
+        where: { id: bookingId },
+        include: bookingInclude,
+    });
+
+    if (!booking) {
+        throw new AppError({
+            statusCode: HTTPStatusCode.NOT_FOUND,
+            message: 'Booking not found',
+            code: 'NOT_FOUND',
+        });
+    }
+
+    if (booking.operatorId !== cognitoUser.sub) {
+        throw new AppError({
+            statusCode: HTTPStatusCode.FORBIDDEN,
+            message: 'You can only confirm usage for your own booking',
+            code: 'FORBIDDEN',
+        });
+    }
+
+    if (booking.useCategory !== 'emergency_recovery') {
+        throw new AppError({
+            statusCode: HTTPStatusCode.BAD_REQUEST,
+            message: 'Usage confirmation is only available for Emergency & Recovery bookings',
+            code: 'BAD_REQUEST',
+        });
+    }
+
+    if (booking.status !== 'APPROVED') {
+        throw new AppError({
+            statusCode: HTTPStatusCode.BAD_REQUEST,
+            message: 'Only approved bookings can be usage-confirmed',
+            code: 'BAD_REQUEST',
+        });
+    }
+
+    if (new Date(booking.endTime) > new Date()) {
+        throw new AppError({
+            statusCode: HTTPStatusCode.BAD_REQUEST,
+            message: 'Usage can only be confirmed after the operation window ends',
+            code: 'BAD_REQUEST',
+        });
+    }
+
+    const updated = await db.$transaction(async tx => {
+        const updatedBooking = await tx.booking.update({
+            where: { id: bookingId },
+            data: {
+                clzUsed: body.used,
+                clzConfirmedAt: new Date(),
+            },
+            include: bookingInclude,
+        });
+
+        await tx.notification.create({
+            data: {
+                userId: booking.site?.landownerId,
+                type: 'info',
+                title: 'Emergency Usage Confirmed',
+                message: body.used
+                    ? `Operator confirmed Emergency & Recovery usage for booking ${booking.bookingReference}.`
+                    : `Operator confirmed Emergency & Recovery booking ${booking.bookingReference} was not used.`,
+                actionUrl: '/dashboard/landowner',
+                relatedEntityId: bookingId,
+            },
+        });
+
+        return updatedBooking;
+    });
+
+    return sendResponse(c, {
+        message: body.used
+            ? 'Emergency usage confirmed. Payment can now be processed.'
+            : 'Emergency usage marked as not used. No charge should be applied.',
+        data: serializeBooking(updated),
     });
 }
