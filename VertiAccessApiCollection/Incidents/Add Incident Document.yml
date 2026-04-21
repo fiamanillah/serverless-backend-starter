@@ -1,0 +1,36 @@
+info:
+  name: Add Incident Document
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{baseUrl}}/incidents/v1/:incidentId/documents"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: 'Bearer {{auth_token}}'
+  body:
+    type: json
+    data: |-
+      {
+        "fileName": "inspection-photo.jpg",
+        "documentType": "photo",
+        "fileSize": "1.4 MB"
+      }
+
+vars:
+  incidentId:
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  ## Add Incident Document
+
+  Registers a supporting document against an incident case.
+  The backend stores the document metadata for the incident thread.

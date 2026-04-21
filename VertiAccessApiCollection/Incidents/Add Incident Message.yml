@@ -1,0 +1,33 @@
+info:
+  name: Add Incident Message
+  type: http
+  seq: 7
+
+http:
+  method: POST
+  url: "{{baseUrl}}/incidents/v1/:incidentId/messages"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: 'Bearer {{auth_token}}'
+  body:
+    type: json
+    data: |-
+      {
+        "messageText": "Please upload any supporting evidence when available."
+      }
+
+vars:
+  incidentId:
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  ## Add Incident Message
+
+  Appends a new message to the incident thread and notifies the other participants.

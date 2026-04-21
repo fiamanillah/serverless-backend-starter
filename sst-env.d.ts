@@ -26,6 +26,10 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
+    "IncidentService": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
     "MyApi": {
       "type": "sst.aws.ApiGatewayV2"
       "url": string

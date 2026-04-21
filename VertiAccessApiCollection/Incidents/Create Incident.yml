@@ -1,0 +1,52 @@
+info:
+  name: Create Incident
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{baseUrl}}/incidents/v1"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: 'Bearer {{auth_token}}'
+  body:
+    type: json
+    data: |-
+      {
+        "siteId": "site_123",
+        "bookingId": "booking_123",
+        "type": "hard_landing",
+        "urgency": "high",
+        "description": "Hard landing was observed during the recovery phase.",
+        "incidentDateTime": "2026-04-21T10:00:00.000Z",
+        "insuranceNotified": true,
+        "immediateActionTaken": "Aircraft recovered and inspected on site.",
+        "status": "UNDER_REVIEW"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  ## Create Incident
+
+  Submits a new incident report from the landowner or operator dashboards.
+
+  ### Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | siteId | string | Yes | Site the incident is tied to |
+  | bookingId | string | No | Booking reference, usually required for operator reports |
+  | type | string | Yes | Incident type from the shared incident enum |
+  | urgency | string | Yes | `low`, `medium`, `high`, or `critical` |
+  | description | string | Yes | Main incident narrative |
+  | incidentDateTime | ISO8601 | No | When the incident happened |
+  | insuranceNotified | boolean | No | Whether insurance has already been informed |
+  | immediateActionTaken | string | No | Immediate mitigation steps |
+  | estimatedDamage | number | No | Estimated damage amount |

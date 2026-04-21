@@ -186,6 +186,16 @@ export default $config({
         routeService('/bookings/v1', bookingServiceFunction.arn);
 
         // ==========================================
+        // Incident Service
+        // ==========================================
+        const incidentServiceFunction = createServiceFunction(
+            'IncidentService',
+            'services/incident-service/index.handler',
+            [databaseUrl]
+        );
+        routeService('/incidents/v1', incidentServiceFunction.arn);
+
+        // ==========================================
         // Booking payment cron (charge approved PAYG bookings on start date)
         // ==========================================
         new sst.aws.Cron('BookingDuePaymentsCron', {
