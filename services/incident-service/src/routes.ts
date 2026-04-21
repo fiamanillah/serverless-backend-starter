@@ -24,7 +24,12 @@ incidentRoutes.get('/', cognitoAuth(), listIncidentsHandler);
 incidentRoutes.get('/mine', cognitoAuth(), listMyIncidentsHandler);
 incidentRoutes.get('/site/:siteId', cognitoAuth(), listSiteIncidentsHandler);
 incidentRoutes.get('/:incidentId', cognitoAuth(), getIncidentHandler);
-incidentRoutes.post('/', cognitoAuth(), zValidator('json', createIncidentSchema), createIncidentHandler);
+incidentRoutes.post(
+    '/',
+    cognitoAuth(),
+    zValidator('json', createIncidentSchema),
+    createIncidentHandler
+);
 incidentRoutes.patch(
     '/:incidentId/status',
     cognitoAuth(),

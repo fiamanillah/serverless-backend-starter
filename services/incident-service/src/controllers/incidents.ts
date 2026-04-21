@@ -106,7 +106,9 @@ function serializeIncident(incident: any) {
         type: incident.incidentType,
         description: incident.description,
         urgency: incident.urgency,
-        estimatedDamage: incident.estimatedDamage ? Number(incident.estimatedDamage.toString()) : undefined,
+        estimatedDamage: incident.estimatedDamage
+            ? Number(incident.estimatedDamage.toString())
+            : undefined,
         status: incident.status,
         adminNotes: incident.adminNotes || undefined,
         messages:
@@ -251,7 +253,8 @@ async function ensureAuthenticatedUserExists(cognitoUser: CognitoUser): Promise<
                 fullName: fullName || cognitoUser.email,
                 contactPhone:
                     (cognitoUser as any).phone_number || (cognitoUser as any).phoneNumber || '',
-                flyerId: (cognitoUser as any).flyerId || `${effectiveUserId.slice(0, 8).toUpperCase()}`,
+                flyerId:
+                    (cognitoUser as any).flyerId || `${effectiveUserId.slice(0, 8).toUpperCase()}`,
             },
             update: {},
         });
@@ -535,7 +538,11 @@ export async function createIncidentHandler(c: Context): Promise<Response> {
                 });
             }
         }
-    } else if (!isAdminUser(cognitoUser) && role === 'landowner' && site.landownerId !== effectiveUserId) {
+    } else if (
+        !isAdminUser(cognitoUser) &&
+        role === 'landowner' &&
+        site.landownerId !== effectiveUserId
+    ) {
         throw new AppError({
             statusCode: HTTPStatusCode.FORBIDDEN,
             message: 'You can only report incidents on your own site',
@@ -610,8 +617,7 @@ export async function updateIncidentStatusHandler(c: Context): Promise<Response>
         });
     }
 
-    const resolvedAt =
-        body.status === 'RESOLVED' || body.status === 'CLOSED' ? new Date() : null;
+    const resolvedAt = body.status === 'RESOLVED' || body.status === 'CLOSED' ? new Date() : null;
 
     await db.incident.update({
         where: { id: incidentId },
