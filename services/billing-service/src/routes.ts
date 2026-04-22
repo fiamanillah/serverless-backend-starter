@@ -28,6 +28,18 @@ import {
     processDueBookingPaymentsHandler,
 } from './controllers/booking-payment.ts';
 import { bookingPaymentSchema } from './schemas/booking-payment.schema.ts';
+import {
+    connectStripeAccountHandler,
+    getLandownerBalanceHandler,
+    createWithdrawalRequestHandler,
+    listWithdrawalsHandler,
+    getWithdrawalDetailsHandler,
+    cancelWithdrawalHandler,
+} from './controllers/withdrawal.ts';
+import {
+    connectStripeAccountSchema,
+    createWithdrawalRequestSchema,
+} from './schemas/withdrawal.schema.ts';
 
 export const billingRoutes = new Hono();
 
@@ -108,3 +120,43 @@ billingRoutes.post('/bookings/:bookingId/pay', cognitoAuth(), payBookingHandler)
 
 // Internal scheduler endpoint for charging approved PAYG bookings on booking date
 billingRoutes.post('/bookings/process-due-payments', processDueBookingPaymentsHandler);
+
+// ==========================================
+// Landowner Withdrawal Operations
+// ==========================================
+
+// Connect Stripe account for payouts
+billingRoutes.post(
+    '/landowner/stripe-connect',
+    cognitoAuth(),
+    zValidator('json', connectStripeAccountSchema),
+    connectStripeAccountHandler
+);
+
+// Get landowner balance
+billingRoutes.get('/landowner/balance', cognitoAuth(), getLandownerBalanceHandler);
+
+// Create withdrawal request
+billingRoutes.post(
+    '/landowner/withdrawals',
+    cognitoAuth(),
+    zValidator('json', createWithdrawalRequestSchema),
+    createWithdrawalRequestHandler
+);
+
+// List all withdrawals
+billingRoutes.get('/landowner/withdrawals', cognitoAuth(), listWithdrawalsHandler);
+
+// Get specific withdrawal details
+billingRoutes.get(
+    '/landowner/withdrawals/:withdrawalId',
+    cognitoAuth(),
+    getWithdrawalDetailsHandler
+);
+
+// Cancel withdrawal
+billingRoutes.post(
+    '/landowner/withdrawals/:withdrawalId/cancel',
+    cognitoAuth(),
+    cancelWithdrawalHandler
+);

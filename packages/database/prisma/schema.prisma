@@ -73,6 +73,14 @@ enum PaymentStatus {
   cancelled_full
 }
 
+enum WithdrawalStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 enum IncidentStatus {
   OPEN
   UNDER_REVIEW
@@ -150,6 +158,9 @@ model User {
   verificationsReviewed Verification[] @relation("ReviewerVerifications")
   adminNotesGiven  AdminNote[]       @relation("AdminNotesGiven")
   adminNotesTarget AdminNote[]       @relation("AdminNotesTarget")
+  landownerBalance LandownerBalance? @relation("LandownerBalance")
+  withdrawals      WithdrawalRequest[] @relation("LandownerWithdrawals")
+  withdrawalTransactions WithdrawalTransaction[] @relation("LandownerTransactions")
 
   @@index([email])
   @@index([role])
@@ -241,6 +252,66 @@ model Transaction {
 
   user             User          @relation(fields: [userId], references: [id])
   booking          Booking?      @relation(fields: [bookingId], references: [id])
+}
+
+model LandownerBalance {
+  id                String    @id @default(uuid())
+  landownerId       String    @unique
+  availableBalance  Decimal   @db.Decimal(10, 2) @default(0)
+  pendingBalance    Decimal   @db.Decimal(10, 2) @default(0)
+  withdrawnBalance  Decimal   @db.Decimal(10, 2) @default(0)
+  currency          String    @default("GBP")
+  lastCalculatedAt  DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  landowner         User      @relation("LandownerBalance", fields: [landownerId], references: [id], onDelete: Cascade)
+  withdrawals       WithdrawalRequest[]
+
+  @@index([landownerId])
+}
+
+model WithdrawalRequest {
+  id                    String            @id @default(uuid())
+  balanceId             String
+  landownerId           String
+  amount                Decimal           @db.Decimal(10, 2)
+  currency              String            @default("GBP")
+  status                WithdrawalStatus  @default(PENDING)
+  bankAccountLastFourDigits String?       // Masked bank account info
+  bankAccountCountry    String?
+  stripePayoutId        String?           @unique
+  failureReason         String?
+  requestedAt           DateTime          @default(now())
+  processedAt           DateTime?
+  completedAt           DateTime?
+
+  balance               LandownerBalance  @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  landowner             User              @relation("LandownerWithdrawals", fields: [landownerId], references: [id], onDelete: Cascade)
+  transactions          WithdrawalTransaction[]
+
+  @@index([landownerId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model WithdrawalTransaction {
+  id                String    @id @default(uuid())
+  withdrawalId      String
+  landownerId       String
+  amount            Decimal   @db.Decimal(10, 2)
+  currency          String    @default("GBP")
+  stripePayout      Json?     // Store full Stripe payout object
+  status            String    // pending, in_transit, paid, failed, cancelled
+  failureCode       String?
+  failureMessage    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  withdrawal        WithdrawalRequest @relation(fields: [withdrawalId], references: [id], onDelete: Cascade)
+  landowner         User              @relation("LandownerTransactions", fields: [landownerId], references: [id], onDelete: Cascade)
+
+  @@index([withdrawalId])
+  @@index([landownerId])
 }
 
 // ==========================================
