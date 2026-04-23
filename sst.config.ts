@@ -19,6 +19,7 @@ export default $config({
         const aws = await import('@pulumi/aws');
         const vpc = new sst.aws.Vpc('VertiaccessVpcV2', { nat: 'managed' });
         const dbPassword = new sst.Secret('DatabasePassword');
+        const dbUrl = new sst.Secret('DatabaseUrl');
         const slugify = (value: string) =>
             value
                 .toLowerCase()
@@ -50,12 +51,12 @@ export default $config({
             publiclyAccessible: false,
         });
 
-        const dbCredentials = new aws.secretsmanager.Secret('DatabaseCredentials', {
+        const dbCredentials = aws.secretsmanager.getSecretOutput({
             name: `${resourcePrefix}-db-credentials`,
         });
 
         new aws.secretsmanager.SecretVersion('DatabaseCredentialsVersion', {
-            secretId: dbCredentials.id,
+            secretId: dbCredentials.arn,
             secretString: $interpolate`{"username":"postgres","password":"${dbPassword.value}"}`,
         });
 
@@ -205,13 +206,35 @@ export default $config({
         });
 
         // ==========================================
+        // API Gateway
+        // ==========================================
+        const api = new sst.aws.ApiGatewayV2('MyApi');
+
+        // ==========================================
+        // Frontend Application
+        // ==========================================
+        const frontend = new sst.aws.StaticSite('Frontend', {
+            path: 'packages/frontend',
+            build: {
+                command: 'bun run build',
+                output: 'build',
+            },
+            environment: {
+                VITE_API_URL: api.url,
+                VITE_COGNITO_USER_POOL_ID: userPool.id,
+                VITE_COGNITO_CLIENT_ID: userPoolClient.id,
+                VITE_AWS_REGION: $app.providers?.aws?.region || 'us-east-2',
+            },
+        });
+
+        // ==========================================
         // Shared environment variables for all Lambda functions
         // ==========================================
+        const defaultAllowedOrigins = $interpolate`http://localhost:3000,http://localhost:5173,${frontend.url}`;
         const sharedEnv = {
             NODE_ENV: $app.stage === 'production' ? 'production' : 'development',
             LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-            ALLOWED_ORIGINS:
-                process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173',
+            ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || defaultAllowedOrigins,
             COGNITO_USER_POOL_ID: userPool.id,
             COGNITO_CLIENT_ID: userPoolClient.id,
             STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
@@ -220,11 +243,6 @@ export default $config({
             S3_BUCKET_NAME: siteDocumentsBucket.name,
             APP_AWS_REGION: process.env.AWS_REGION || 'us-east-2',
         };
-
-        // ==========================================
-        // API Gateway
-        // ==========================================
-        const api = new sst.aws.ApiGatewayV2('MyApi');
 
         const createServiceFunction = (
             name: string,
@@ -333,23 +351,6 @@ export default $config({
             []
         );
         routeService('/notifications/v1', notificationServiceFunction.arn);
-
-        // ==========================================
-        // Frontend Application
-        // ==========================================
-        const frontend = new sst.aws.StaticSite('Frontend', {
-            path: 'packages/frontend',
-            build: {
-                command: 'bun run build',
-                output: 'build',
-            },
-            environment: {
-                VITE_API_URL: api.url,
-                VITE_COGNITO_USER_POOL_ID: userPool.id,
-                VITE_COGNITO_CLIENT_ID: userPoolClient.id,
-                VITE_AWS_REGION: $app.providers?.aws?.region || 'us-east-2',
-            },
-        });
 
         // ==========================================
         // Test Service
